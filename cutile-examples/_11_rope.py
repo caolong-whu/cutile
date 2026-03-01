@@ -80,9 +80,6 @@ def rope_complex(x: torch.Tensor, theta: int = 10000):
 
     return x_out 
 
-import torch
-import cuda.tile as ct
-
 @ct.kernel
 def build_freqs(o: ct.Array, head_dim: int, theta: float, 
                 tile_size: ct.Constant, allow_tma: ct.Constant):

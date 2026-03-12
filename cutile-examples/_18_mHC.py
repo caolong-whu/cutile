@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-def sinkhorn_knopp(x: torch.Tensor, num_iters: int=20, eps: float=1e-20) -> torch.Tensor:
+def sinkhorn_knopp(x: torch.Tensor, num_iters: int=1, eps: float=1e-20) -> torch.Tensor:
     x_exp = torch.exp(x)
     
     for i in range(num_iters):
@@ -76,7 +76,7 @@ torch.cuda.empty_cache()
 print(torch.cuda.memory_summary())
 INV_LOG_2 = 1.0 / math.log(2)
 
-def sinkhorn_knopp(x: torch.Tensor, num_iters: int=20, eps: float=1e-20) -> torch.Tensor:
+def sinkhorn_knopp(x: torch.Tensor, num_iters: int=1, eps: float=1e-20) -> torch.Tensor:
     x_exp = torch.exp(x)
     
     for i in range(num_iters):
@@ -90,7 +90,7 @@ def sigmoid_exp2(X: ct.Array):
     return 1 / (1 + ct.exp2(-1 * X))
 
 @ct.function
-def sinkhorn_exp2(tile: ct.Tile, iter: int=1):
+def sinkhorn_exp2(tile: ct.Tile, iter: int=20):
     tile = ct.exp2(tile)
     for i in range(iter):
         tile = tile / ct.sum(tile, axis=-1, keepdims=True)
@@ -172,7 +172,10 @@ def Split_H_Kernel(
     rms_norm_tile = ct.rsqrt(ct.extract(acc_H, (0, 32), (tileM, 1)) / D + 1e-9)
     
     H_pre_tile =  sigmoid_exp2(rms_norm_tile * alpha_pre * H_pre_tile + beta_pre)
-    H_res_tile = sinkhorn_exp2(rms_norm_tile.reshape((tileM, 1, 1)) * alpha_res * H_res_tile + beta_res)
+    H_res_tile = ct.exp2(rms_norm_tile.reshape((tileM, 1, 1)) * alpha_res * H_res_tile + beta_res)
+    for i in range(1):
+        H_res_tile = H_res_tile / (ct.sum(H_res_tile, axis=-1, keepdims=True) + 1e-20)    
+        H_res_tile = H_res_tile / (ct.sum(H_res_tile, axis=-2, keepdims=True) + 1e-20)
     H_post_tile = 2 * sigmoid_exp2(rms_norm_tile * alpha_post * H_post_tile + beta_post)
     
     ct.store(H_pre, (block_m, 0), H_pre_tile.astype(H_pre.dtype), allow_tma=False)
@@ -329,9 +332,9 @@ class mHC(nn.Module):
         
         print("Split_H Pass!")
         
-        # X_pre = Apply_Pre_Transformer(x, H_pre)
-        X_pre = H_pre.unsqueeze(1) @ x.view(x.shape[0], 4, -1)
-        X_pre = X_pre.squeeze(1)
+        X_pre = Apply_Pre_Transformer(x, H_pre)
+        # X_pre = H_pre.unsqueeze(1) @ x.view(x.shape[0], 4, -1)
+        # X_pre = X_pre.squeeze(1)
         
         print("Apply_Pre_Transformer Pass!")
         
